@@ -1,0 +1,72 @@
+---
+- name: Add nginx stable repository from PPA and install its signing key on Debian target
+  ansible.builtin.apt_repository:
+    repo: 'ppa:ondrej/php'
+
+- name: Install dependencies with apt
+  ansible.builtin.apt:
+     name:
+       - software-properties-common
+       - ca-certificates
+       - lsb-release
+       - apt-transport-https
+       - nginx
+       - php7.4
+       - php7.4-mysql
+       - php7.4-fpm
+     state: present
+     update_cache: yes
+
+- name: Upload nginx config
+  copy:
+    src: "default"
+    dest: "/etc/nginx/sites-available/default"
+    mode: 0755
+  register: nginx_config_uploaded
+  until: nginx_config_uploaded is succeeded
+
+- name: Reload service httpd, in all cases
+  ansible.builtin.systemd:
+    name: nginx
+    state: reloaded
+
+- name: Download wordpress
+  ansible.builtin.get_url:
+    url: https://wordpress.org/latest.tar.gz
+    dest: /tmp/
+    mode: 0755
+
+- name: Ensure installation dir exists
+  file:
+    state: directory
+    path: "/tmp/wordpress-6.0.1.tar.gz"
+    mode: 0755
+
+- name: Extract wordpress in the installation directory
+  become: true
+  unarchive:
+    copy: false
+    src: "/tmp/wordpress-6.0.2.tar.gz"
+    dest: "/tmp/"
+
+- name: Remove wp-config-sample.php
+  ansible.builtin.file:
+    path: /tmp/wordpress/wp-config-sample.php
+    state: absent
+
+- name: Upload wp-config.php
+  copy:
+    src: "wp-config.php"
+    dest: "/tmp/wordpress/wp-config.php"
+    mode: 0755
+
+- name: Remove standart nginx pages
+  ansible.builtin.file:
+    path: /var/www/html/{{ item }}
+    state: absent
+  with_items:
+  - index.html
+  - index.nginx-debian.html
+
+- name: Move content from wordpress directory to the root of the server
+  shell: mv /tmp/wordpress/* /var/www/html/
